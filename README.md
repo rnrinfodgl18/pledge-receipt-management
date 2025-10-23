@@ -163,6 +163,14 @@ pytest
 - Ensure virtual environment is activated
 - Reinstall dependencies: `pip install -r requirements.txt`
 
+### Rust/Cargo compilation errors during deployment
+
+If you encounter errors about `maturin`, `cargo`, or "Read-only file system" when deploying:
+
+- Use the provided `build.sh` script for deployment
+- Set build command to `bash build.sh` on your platform
+- See [BUILD_FIX.md](BUILD_FIX.md) for detailed information
+
 ## Technology Stack
 
 | Tool | Version | Purpose |

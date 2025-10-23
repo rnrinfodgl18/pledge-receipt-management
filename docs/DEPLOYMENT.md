@@ -96,7 +96,7 @@ git push
    | **Region** | Oregon (same as database) |
    | **Branch** | main |
    | **Runtime** | Python 3.11 |
-   | **Build Command** | `pip install -r requirements.txt` |
+   | **Build Command** | `bash build.sh` |
    | **Start Command** | `uvicorn app.main:app --host 0.0.0.0 --port 8000` |
 
 6. **Click "Create Web Service"**
@@ -247,6 +247,30 @@ Check Logs if there are connection errors.
 - Check `requirements.txt` has all imports
 - Verify package names are correct
 - Run `pip install -r requirements.txt` locally to test
+
+### Problem: "Rust/Cargo compilation error" or "Read-only file system"
+**Symptoms:**
+- Error mentioning `maturin`, `cargo`, or `Rust toolchain`
+- Message about "Read-only file system" during build
+- Packages like `argon2-cffi` or `cryptography` failing to install
+
+**Solution:**
+This project includes a `build.sh` script that prevents these issues by forcing binary-only installation for Rust-based packages.
+
+**Ensure your Render build command is set to:**
+```
+bash build.sh
+```
+
+**What the build script does:**
+- Forces pip to use only pre-compiled binary wheels
+- Prevents source compilation of Rust packages
+- Avoids Cargo/maturin compilation in restricted environments
+
+**If you're not using the build script, you can manually fix by:**
+```bash
+pip install --only-binary argon2-cffi,argon2-cffi-bindings,cryptography,passlib -r requirements.txt
+```
 
 ---
 
