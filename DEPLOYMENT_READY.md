@@ -66,7 +66,7 @@ Name:           pledge-receipt-api
 Region:         Oregon (same as DB)
 Branch:         main
 Runtime:        Python 3.11
-Build Command:  pip install -r requirements.txt
+Build Command:  bash build.sh
 Start Command:  uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
