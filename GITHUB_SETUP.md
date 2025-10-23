@@ -40,7 +40,7 @@ git remote -v
 
 ```bash
 git config --global user.name "Your Name"
-git config --global user.email "your.email@example.com"
+git config --global user.email "rnrinfo2014@gmail.com"
 ```
 
 #### Step 4: Make Initial Commit
