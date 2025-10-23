@@ -20,8 +20,13 @@ from app.routes.receipts import router as receipts_router
 
 load_dotenv()
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
+# Create database tables - with error handling
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"⚠️  Warning: Could not create database tables on startup: {e}")
+    print("This may be OK if the database is unreachable during development.")
+    print("Database tables will be created on first request if possible.")
 
 # Initialize FastAPI app
 app = FastAPI(
