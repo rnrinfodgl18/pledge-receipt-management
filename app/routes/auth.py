@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User as UserModel
 from app import schemas
-from app.security import verify_password
-from app.auth import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.security import verify_password, hash_password
+from app.auth import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_current_user
 
 logger = logging.getLogger(__name__)
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
@@ -75,4 +75,69 @@ def login(login_data: schemas.LoginRequest, db: Session = Depends(get_db)):
         "access_token": access_token,
         "token_type": "bearer",
         "user": user
+    }
+
+
+@auth_router.post("/change-password", response_model=schemas.ChangePasswordResponse)
+def change_password(
+    password_data: schemas.ChangePasswordRequest,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Change password for authenticated user."""
+    print(f"\n{'='*60}")
+    print(f"🔐 CHANGE PASSWORD REQUEST")
+    print(f"{'='*60}")
+    print(f"User ID: {current_user.id}")
+    print(f"Username: {current_user.username}")
+    
+    # Validate that new password and confirm password match
+    if password_data.new_password != password_data.confirm_password:
+        print(f"❌ New password and confirm password do not match")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password and confirm password do not match"
+        )
+    
+    # Validate password length
+    if len(password_data.new_password) < 6:
+        print(f"❌ New password must be at least 6 characters")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 6 characters"
+        )
+    
+    # Verify current password is correct
+    print(f"🔍 Verifying current password...")
+    is_password_valid = verify_password(password_data.current_password, current_user.password)
+    
+    if not is_password_valid:
+        print(f"❌ Current password is incorrect")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect"
+        )
+    
+    print(f"✅ Current password verified")
+    
+    # Check that new password is different from current password
+    if verify_password(password_data.new_password, current_user.password):
+        print(f"⚠️  New password is same as current password")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from current password"
+        )
+    
+    # Hash and update password
+    print(f"🔒 Hashing new password...")
+    hashed_password = hash_password(password_data.new_password)
+    current_user.password = hashed_password
+    db.commit()
+    
+    print(f"✅ Password changed successfully")
+    print(f"{'='*60}\n")
+    
+    return {
+        "message": "Password changed successfully",
+        "user": current_user
     }

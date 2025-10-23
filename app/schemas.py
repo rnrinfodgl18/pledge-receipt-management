@@ -81,6 +81,19 @@ class UserResponse(User):
     pass
 
 
+class ChangePasswordRequest(BaseModel):
+    """Schema for changing user password."""
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+
+class ChangePasswordResponse(BaseModel):
+    """Schema for change password response."""
+    message: str
+    user: UserResponse
+
+
 # Authentication Schemas
 class LoginRequest(BaseModel):
     """Schema for user login."""
