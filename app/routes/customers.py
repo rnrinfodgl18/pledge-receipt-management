@@ -2,6 +2,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from app.database import get_db
 from app.models import CustomerDetails as CustomerDetailsModel, ChartOfAccounts as ChartOfAccountsModel
 from app import schemas
@@ -171,6 +172,50 @@ def list_customers(
 ):
     """List all customers with pagination. (Requires authentication)"""
     customers = db.query(CustomerDetailsModel).offset(skip).limit(limit).all()
+    return customers
+
+
+@customer_details_router.get("/search", response_model=List[schemas.CustomerDetails])
+def search_customers(
+    q: str,
+    skip: int = 0,
+    limit: int = 25,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Search customers by multiple fields using case-insensitive contains.
+
+    Returns list of customers matching query across:
+    customer_name, mobile_number, alt_mobile_number, guardian_name, street, location.
+
+    Minimum query length enforced: > 2 characters.
+    """
+    if not q or len(q.strip()) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Query must be at least 3 characters long"
+        )
+
+    query_text = f"%{q.strip()}%"
+
+    # Build OR filter across relevant fields
+    filters = (
+        CustomerDetailsModel.customer_name.ilike(query_text),
+        CustomerDetailsModel.mobile_number.ilike(query_text),
+        CustomerDetailsModel.alt_mobile_number.ilike(query_text),
+        CustomerDetailsModel.guardian_name.ilike(query_text),
+        CustomerDetailsModel.street.ilike(query_text),
+        CustomerDetailsModel.location.ilike(query_text),
+    )
+
+    customers = (
+        db.query(CustomerDetailsModel)
+        .filter(or_(*filters))
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
     return customers
 
 

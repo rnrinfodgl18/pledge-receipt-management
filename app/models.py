@@ -234,3 +234,90 @@ class ReceiptItem(Base):
     created_at = Column(DateTime, server_default=func.now())
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
 
+
+class BankPledge(Base):
+    """Bank Pledge model - stores pledges transferred to banks."""
+    __tablename__ = "bank_pledges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    pledge_id = Column(Integer, ForeignKey("pledges.id"), nullable=False, index=True)
+    bank_details_id = Column(Integer, ForeignKey("bank_details.id"), nullable=False, index=True)
+    
+    # Transfer details
+    transfer_date = Column(DateTime, nullable=False, index=True)
+    gross_weight = Column(Float, nullable=False)  # Weight of items sent to bank
+    net_weight = Column(Float, nullable=False)
+    
+    # Valuation & LTV
+    valuation_amount = Column(Float, nullable=False)  # Bank's valuation
+    ltv_percentage = Column(Float, nullable=False, default=80.0)  # Loan-to-Value %
+    bank_loan_amount = Column(Float, nullable=False)  # Amount bank gives
+    original_shop_loan = Column(Float, nullable=False)  # Original pawn shop loan
+    outstanding_interest = Column(Float, nullable=False, default=0.0)  # Interest at transfer time
+    
+    # Bank account for tracking
+    bank_account_id = Column(Integer, ForeignKey("chart_of_accounts.id"), nullable=True)
+    
+    # Status & metadata
+    status = Column(String, default="WITH_BANK")  # WITH_BANK, REDEEMED, EXPIRED, FORECLOSED
+    bank_reference_no = Column(String, nullable=True)  # Bank's reference number
+    remarks = Column(String, nullable=True)
+    
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class BankPledgeItems(Base):
+    """Bank Pledge Items model - audit trail of items sent to bank."""
+    __tablename__ = "bank_pledge_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    bank_pledge_id = Column(Integer, ForeignKey("bank_pledges.id"), nullable=False, index=True)
+    original_item_id = Column(Integer, ForeignKey("pledge_items.id"), nullable=False, index=True)
+    
+    jewel_design = Column(String, nullable=True)
+    jewel_condition = Column(String, nullable=True)
+    stone_type = Column(String, nullable=True)
+    gross_weight = Column(Float, nullable=False)
+    net_weight = Column(Float, nullable=False)
+    quantity = Column(Integer, default=1)
+    
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class BankRedemption(Base):
+    """Bank Redemption model - stores redemption of pledges from banks."""
+    __tablename__ = "bank_redemptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    bank_pledge_id = Column(Integer, ForeignKey("bank_pledges.id"), nullable=False, index=True)
+    
+    # Redemption details
+    redemption_date = Column(DateTime, nullable=False, index=True)
+    amount_paid_to_bank = Column(Float, nullable=False)  # Principal paid to bank
+    interest_on_bank_loan = Column(Float, nullable=False, default=0.0)  # Interest accrued at bank
+    bank_charges = Column(Float, nullable=False, default=0.0)  # Bank's charges
+    
+    # Price & Gain/Loss calculation
+    bank_valuation = Column(Float, nullable=False)  # Original bank valuation
+    actual_redemption_value = Column(Float, nullable=False)  # What we actually paid/got
+    price_difference = Column(Float, nullable=False)  # Gain (+) or Loss (-)
+    
+    # Interest tracking
+    original_shop_interest = Column(Float, nullable=False, default=0.0)  # Original interest
+    interest_recovered = Column(Float, nullable=False, default=0.0)  # Interest received
+    
+    # Status & reference
+    status = Column(String, default="REDEEMED")  # REDEEMED, PARTIAL, FORECLOSED
+    redemption_account_id = Column(Integer, ForeignKey("chart_of_accounts.id"), nullable=True)
+    
+    remarks = Column(String, nullable=True)
+    reference_document = Column(String, nullable=True)  # PDF/image of bank receipt
+    
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+

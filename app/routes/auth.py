@@ -16,11 +16,7 @@ auth_router = APIRouter(prefix="/auth", tags=["auth"])
 @auth_router.post("/login", response_model=schemas.TokenResponse)
 def login(login_data: schemas.LoginRequest, db: Session = Depends(get_db)):
     """User login - returns JWT token."""
-    print(f"\n{'='*60}")
-    print(f"🔍 LOGIN REQUEST RECEIVED")
-    print(f"{'='*60}")
-    print(f"Username provided: '{login_data.username}'")
-    print(f"Password provided: {'*' * len(login_data.password)} (length: {len(login_data.password)})")
+    
     
     # Find user by username
     user = db.query(UserModel).filter(UserModel.username == login_data.username).first()
@@ -67,9 +63,6 @@ def login(login_data: schemas.LoginRequest, db: Session = Depends(get_db)):
         expires_delta=access_token_expires
     )
     
-    print(f"✅ Token created successfully")
-    print(f"   Token: {access_token[:50]}...")
-    print(f"{'='*60}\n")
     
     return {
         "access_token": access_token,

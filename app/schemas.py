@@ -587,3 +587,158 @@ class PledgeReceipt(PledgeReceiptBase):
 
     class Config:
         from_attributes = True
+
+
+# Bank Pledge Schemas
+class PledgeToBankRequest(BaseModel):
+    """Schema for transferring a pledge to bank."""
+    pledge_id: int
+    bank_details_id: int
+    transfer_date: datetime
+    gross_weight: float
+    net_weight: float
+    valuation_amount: float  # Bank's valuation
+    ltv_percentage: float = 80.0  # Loan-to-Value percentage
+    bank_reference_no: Optional[str] = None
+    remarks: Optional[str] = None
+
+
+class BankPledgeItemResponse(BaseModel):
+    """Schema for bank pledge item in responses."""
+    id: int
+    jewel_design: Optional[str]
+    jewel_condition: Optional[str]
+    stone_type: Optional[str]
+    gross_weight: float
+    net_weight: float
+    quantity: int
+
+    class Config:
+        from_attributes = True
+
+
+class BankDetailsResponse(BaseModel):
+    """Schema for bank details in responses."""
+    id: int
+    bank_name: str
+    account_number: str
+    account_holder_name: str
+    ifsc_code: str
+    branch_name: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class PledgeToBankResponse(BaseModel):
+    """Schema for pledge to bank response."""
+    id: int
+    pledge_id: int
+    pledge_no: str
+    company_id: int
+    bank_name: str
+    transfer_date: datetime
+    gross_weight: float
+    net_weight: float
+    valuation_amount: float
+    ltv_percentage: float
+    bank_loan_amount: float
+    original_shop_loan: float
+    outstanding_interest: float
+    status: str
+    bank_reference_no: Optional[str]
+    remarks: Optional[str]
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BankPledgeDetailResponse(BaseModel):
+    """Schema for bank pledge detail response."""
+    id: int
+    pledge_id: int
+    pledge_no: str
+    company_id: int
+    customer_name: str
+    customer_mobile: str
+    bank_details: BankDetailsResponse
+    transfer_date: datetime
+    gross_weight: float
+    net_weight: float
+    valuation_amount: float
+    ltv_percentage: float
+    bank_loan_amount: float
+    original_shop_loan: float
+    outstanding_interest: float
+    status: str
+    bank_reference_no: Optional[str]
+    remarks: Optional[str]
+    items: List[BankPledgeItemResponse]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BankRedemptionRequest(BaseModel):
+    """Schema for redeeming pledge from bank."""
+    redemption_date: datetime
+    amount_paid_to_bank: float
+    interest_on_bank_loan: float = 0.0
+    bank_charges: float = 0.0
+    actual_redemption_value: float
+    interest_recovered: float = 0.0
+    remarks: Optional[str] = None
+
+
+class BankRedemptionResponse(BaseModel):
+    """Schema for bank redemption response."""
+    id: int
+    bank_pledge_id: int
+    pledge_no: str
+    redemption_date: datetime
+    amount_paid_to_bank: float
+    interest_on_bank_loan: float
+    bank_charges: float
+    bank_valuation: float
+    actual_redemption_value: float
+    price_difference: float
+    interest_recovered: float
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BankPledgeListItem(BaseModel):
+    """Schema for bank pledge list item."""
+    id: int
+    pledge_id: int
+    pledge_no: str
+    customer_name: str
+    bank_name: str
+    bank_loan_amount: float
+    valuation_amount: float
+    status: str
+    transfer_date: datetime
+    ltv_percentage: float
+
+    class Config:
+        from_attributes = True
+
+
+class BankPledgeListResponse(BaseModel):
+    """Schema for bank pledge list response."""
+    total: int
+    items: List[BankPledgeListItem]
+
+
+class CancelBankPledgeRequest(BaseModel):
+    """Schema for cancelling bank pledge."""
+    reason: str
+    return_date: Optional[datetime] = None

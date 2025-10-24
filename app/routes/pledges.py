@@ -467,3 +467,118 @@ def get_pledge_items(
     ).all()
     
     return items
+
+
+@router.get("/designs/list", response_model=List[str], tags=["pledge-items"])
+def get_jewel_designs(
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """
+    Get list of all distinct jewel designs from pledge items.
+    
+    Returns:
+    - List of unique jewel designs (e.g., Ring, Necklace, Bracelet, Earring, etc.)
+    - Used for dropdown/select options in frontend
+    - Filters out null/empty values
+    - Results sorted alphabetically
+    
+    Example:
+        GET /pledges/designs/list
+        
+        Response:
+        [
+            "Bracelet",
+            "Earring",
+            "Necklace",
+            "Ring",
+            "Ankle",
+            "Waist Chain"
+        ]
+    """
+    # Query all distinct non-null jewel designs, sorted alphabetically
+    designs = db.query(PledgeItemsModel.jewel_design).filter(
+        PledgeItemsModel.jewel_design.isnot(None),
+        PledgeItemsModel.jewel_design != ""
+    ).distinct().order_by(PledgeItemsModel.jewel_design).all()
+    
+    # Extract values from tuples and return as list
+    design_list = [design[0] for design in designs if design[0]]
+    
+    return design_list
+
+
+@router.get("/conditions/list", response_model=List[str], tags=["pledge-items"])
+def get_jewel_conditions(
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """
+    Get list of all distinct jewel conditions from pledge items.
+    
+    Returns:
+    - List of unique jewel conditions (e.g., Good, Fair, Poor, Excellent, etc.)
+    - Used for dropdown/select options in frontend
+    - Filters out null/empty values
+    - Results sorted alphabetically
+    
+    Example:
+        GET /pledges/conditions/list
+        
+        Response:
+        [
+            "Excellent",
+            "Fair",
+            "Good",
+            "Poor"
+        ]
+    """
+    # Query all distinct non-null jewel conditions, sorted alphabetically
+    conditions = db.query(PledgeItemsModel.jewel_condition).filter(
+        PledgeItemsModel.jewel_condition.isnot(None),
+        PledgeItemsModel.jewel_condition != ""
+    ).distinct().order_by(PledgeItemsModel.jewel_condition).all()
+    
+    # Extract values from tuples and return as list
+    condition_list = [condition[0] for condition in conditions if condition[0]]
+    
+    return condition_list
+
+
+@router.get("/stone-types/list", response_model=List[str], tags=["pledge-items"])
+def get_stone_types(
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """
+    Get list of all distinct stone types from pledge items.
+    
+    Returns:
+    - List of unique stone types (e.g., Diamond, Ruby, Sapphire, Emerald, etc.)
+    - Used for dropdown/select options in frontend
+    - Filters out null/empty values
+    - Results sorted alphabetically
+    
+    Example:
+        GET /pledges/stone-types/list
+        
+        Response:
+        [
+            "Diamond",
+            "Emerald",
+            "Pearl",
+            "Ruby",
+            "Sapphire"
+        ]
+    """
+    # Query all distinct non-null stone types, sorted alphabetically
+    stone_types = db.query(PledgeItemsModel.stone_type).filter(
+        PledgeItemsModel.stone_type.isnot(None),
+        PledgeItemsModel.stone_type != ""
+    ).distinct().order_by(PledgeItemsModel.stone_type).all()
+    
+    # Extract values from tuples and return as list
+    stone_type_list = [stone[0] for stone in stone_types if stone[0]]
+    
+    return stone_type_list
+
