@@ -436,6 +436,7 @@ class PledgeBase(BaseModel):
     customer_id: int
     scheme_id: int
     pledge_date: datetime
+    due_date: Optional[datetime] = None
     gross_weight: float
     net_weight: float
     maximum_value: float
@@ -454,6 +455,7 @@ class PledgeCreate(BaseModel):
     customer_id: int
     scheme_id: int
     pledge_date: datetime
+    due_date: Optional[datetime] = None
     gross_weight: float
     net_weight: float
     maximum_value: float
@@ -468,6 +470,7 @@ class PledgeCreate(BaseModel):
 
 class PledgeUpdate(BaseModel):
     """Schema for updating a pledge."""
+    due_date: Optional[datetime] = None
     gross_weight: Optional[float] = None
     net_weight: Optional[float] = None
     maximum_value: Optional[float] = None
@@ -478,6 +481,7 @@ class PledgeUpdate(BaseModel):
     pledge_photo: Optional[str] = None
     status: Optional[str] = None
     old_pledge_no: Optional[str] = None
+    pledge_items: Optional[List[PledgeItemsCreate]] = None  # New items to replace existing
 
 
 class Pledge(PledgeBase):
@@ -742,3 +746,157 @@ class CancelBankPledgeRequest(BaseModel):
     """Schema for cancelling bank pledge."""
     reason: str
     return_date: Optional[datetime] = None
+
+
+# Expense Category Schemas
+class ExpenseCategoryBase(BaseModel):
+    """Base expense category schema."""
+    company_id: int
+    category_name: str
+    category_code: str
+    description: Optional[str] = None
+    default_debit_account_id: Optional[int] = None
+    default_credit_account_id: Optional[int] = None
+
+
+class ExpenseCategoryCreate(ExpenseCategoryBase):
+    """Schema for creating expense category."""
+    pass
+
+
+class ExpenseCategoryUpdate(BaseModel):
+    """Schema for updating expense category."""
+    category_name: Optional[str] = None
+    category_code: Optional[str] = None
+    description: Optional[str] = None
+    default_debit_account_id: Optional[int] = None
+    default_credit_account_id: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class ExpenseCategory(ExpenseCategoryBase):
+    """Expense category schema with database fields."""
+    id: int
+    is_active: bool
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# Expense Ledger Account Schemas
+class ExpenseLedgerAccountBase(BaseModel):
+    """Base expense ledger account schema."""
+    company_id: int
+    account_name: str
+    account_code: str
+    account_type: str  # DEBIT or CREDIT
+    coa_account_id: int
+    expense_category_id: Optional[int] = None
+    opening_balance: float = 0.0
+    description: Optional[str] = None
+
+
+class ExpenseLedgerAccountCreate(ExpenseLedgerAccountBase):
+    """Schema for creating expense ledger account."""
+    pass
+
+
+class ExpenseLedgerAccountUpdate(BaseModel):
+    """Schema for updating expense ledger account."""
+    account_name: Optional[str] = None
+    account_type: Optional[str] = None
+    coa_account_id: Optional[int] = None
+    expense_category_id: Optional[int] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class ExpenseLedgerAccount(ExpenseLedgerAccountBase):
+    """Expense ledger account schema with database fields."""
+    id: int
+    current_balance: float
+    is_active: bool
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# Expense Transaction Schemas
+class ExpenseTransactionBase(BaseModel):
+    """Base expense transaction schema."""
+    company_id: int
+    transaction_date: datetime
+    expense_category_id: int
+    debit_account_id: int
+    credit_account_id: int
+    amount: float
+    description: Optional[str] = None
+    reference_no: Optional[str] = None
+    payment_mode: str  # CASH, BANK, UPI, CHEQUE
+    payment_reference: Optional[str] = None
+    payee_name: Optional[str] = None
+    payee_contact: Optional[str] = None
+    remarks: Optional[str] = None
+
+
+class ExpenseTransactionCreate(ExpenseTransactionBase):
+    """Schema for creating expense transaction."""
+    pass
+
+
+class ExpenseTransactionUpdate(BaseModel):
+    """Schema for updating expense transaction."""
+    transaction_date: Optional[datetime] = None
+    expense_category_id: Optional[int] = None
+    amount: Optional[float] = None
+    description: Optional[str] = None
+    reference_no: Optional[str] = None
+    payment_mode: Optional[str] = None
+    payment_reference: Optional[str] = None
+    payee_name: Optional[str] = None
+    payee_contact: Optional[str] = None
+    remarks: Optional[str] = None
+
+
+class ExpenseTransaction(ExpenseTransactionBase):
+    """Expense transaction schema with database fields."""
+    id: int
+    transaction_no: str
+    attachment_path: Optional[str]
+    ledger_entry_created: bool
+    ledger_entry_ids: Optional[str]
+    status: str
+    approved_by: Optional[int]
+    approved_at: Optional[datetime]
+    rejection_reason: Optional[str]
+    is_active: bool
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ExpenseTransactionApproval(BaseModel):
+    """Schema for approving/rejecting expense transaction."""
+    action: str  # APPROVE or REJECT
+    remarks: Optional[str] = None
+
+
+class ExpenseTransactionWithDetails(ExpenseTransaction):
+    """Expense transaction with category and account details."""
+    category_name: Optional[str] = None
+    debit_account_name: Optional[str] = None
+    credit_account_name: Optional[str] = None
+    created_by_username: Optional[str] = None
+    approved_by_username: Optional[str] = None
+
+    class Config:
+        from_attributes = True

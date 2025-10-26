@@ -19,6 +19,7 @@ from app.routes.ledger_entries import ledger_router
 from app.routes.pledges import router as pledges_router
 from app.routes.receipts import router as receipts_router
 from app.routes.bank_pledges import router as bank_pledges_router
+from app.routes.expenses import router as expenses_router
 from app.swagger_auth import swagger_auth_router
 
 load_dotenv()
@@ -78,6 +79,7 @@ app.include_router(ledger_router)
 app.include_router(pledges_router)
 app.include_router(receipts_router)
 app.include_router(bank_pledges_router)
+app.include_router(expenses_router)
 
 
 # Configure OAuth2 for Swagger UI
@@ -89,7 +91,7 @@ def custom_openapi():
     openapi_schema = get_openapi(
         title="Pledge Receipt Management API",
         version="1.0.0",
-        description="FastAPI application for managing pledges, customers, and receipts",
+        description="FastAPI application for managing pledges, customers, and receipts with OAuth2 authentication",
         routes=app.routes,
     )
     
@@ -103,20 +105,25 @@ def custom_openapi():
                     "scopes": {}
                 }
             }
+        },
+        "HTTPBearer": {
+            "type": "http",
+            "scheme": "bearer"
         }
     }
     
     # Apply security to all endpoints (except login and public endpoints)
+    skip_paths = ["/token", "/health", "/", "/docs", "/redoc", "/openapi.json", "/auth/login"]
+    
     for path, methods in openapi_schema["paths"].items():
-        # Skip token endpoint and health check
-        if path in ["/token", "/health", "/"]:
+        # Skip public endpoints
+        if path in skip_paths:
             continue
         
         for method, operation in methods.items():
             if method in ["get", "post", "put", "delete", "patch"]:
                 # Add security requirement to operation
-                if "security" not in operation:
-                    operation["security"] = [{"OAuth2PasswordBearer": []}]
+                operation["security"] = [{"OAuth2PasswordBearer": []}, {"HTTPBearer": []}]
     
     app.openapi_schema = openapi_schema
     return app.openapi_schema

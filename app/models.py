@@ -157,6 +157,7 @@ class Pledge(Base):
     scheme_id = Column(Integer, ForeignKey("schemes.id"), nullable=False, index=True)
     pledge_no = Column(String, unique=True, nullable=False, index=True)  # e.g., GLD-2025-0001
     pledge_date = Column(DateTime, nullable=False, index=True)
+    due_date = Column(DateTime, nullable=True, index=True)  # Due date for pledge repayment
     gross_weight = Column(Float, nullable=False)
     net_weight = Column(Float, nullable=False)
     maximum_value = Column(Float, nullable=False)  # Maximum value of pledged items
@@ -317,6 +318,100 @@ class BankRedemption(Base):
     remarks = Column(String, nullable=True)
     reference_document = Column(String, nullable=True)  # PDF/image of bank receipt
     
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ExpenseCategory(Base):
+    """Expense Category model - stores expense categories."""
+    __tablename__ = "expense_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    category_name = Column(String, nullable=False, index=True)
+    category_code = Column(String, nullable=False, index=True)  # e.g., EXP-001
+    description = Column(String, nullable=True)
+    
+    # Default COA account mapping for this category
+    default_debit_account_id = Column(Integer, ForeignKey("chart_of_accounts.id"), nullable=True)
+    default_credit_account_id = Column(Integer, ForeignKey("chart_of_accounts.id"), nullable=True)
+    
+    is_active = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ExpenseLedgerAccount(Base):
+    """Expense Ledger Account - holds debit/credit accounts separately for expense tracking."""
+    __tablename__ = "expense_ledger_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    account_name = Column(String, nullable=False, index=True)
+    account_code = Column(String, nullable=False, unique=True, index=True)  # e.g., EXP-LEDGER-001
+    account_type = Column(String, nullable=False)  # DEBIT or CREDIT
+    
+    # Link to COA
+    coa_account_id = Column(Integer, ForeignKey("chart_of_accounts.id"), nullable=False, index=True)
+    
+    # Category association
+    expense_category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=True, index=True)
+    
+    # Balance tracking
+    opening_balance = Column(Float, nullable=False, default=0.0)
+    current_balance = Column(Float, nullable=False, default=0.0)
+    
+    description = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ExpenseTransaction(Base):
+    """Expense Transaction - records all expense transactions with parallel ledger entries."""
+    __tablename__ = "expense_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    transaction_no = Column(String, nullable=False, unique=True, index=True)  # Auto-generated
+    transaction_date = Column(DateTime, nullable=False, index=True)
+    
+    # Category and accounts
+    expense_category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=False, index=True)
+    debit_account_id = Column(Integer, ForeignKey("expense_ledger_accounts.id"), nullable=False, index=True)
+    credit_account_id = Column(Integer, ForeignKey("expense_ledger_accounts.id"), nullable=False, index=True)
+    
+    # Transaction details
+    amount = Column(Float, nullable=False)
+    description = Column(String, nullable=True)
+    reference_no = Column(String, nullable=True)  # Invoice/bill number
+    
+    # Payment details
+    payment_mode = Column(String, nullable=False)  # CASH, BANK, UPI, CHEQUE
+    payment_reference = Column(String, nullable=True)  # Cheque no, UPI ref, etc.
+    
+    # Vendor/Payee details
+    payee_name = Column(String, nullable=True)
+    payee_contact = Column(String, nullable=True)
+    
+    # Document attachment
+    attachment_path = Column(String, nullable=True)  # PDF/image of bill/invoice
+    
+    # Ledger integration
+    ledger_entry_created = Column(Boolean, default=False)
+    ledger_entry_ids = Column(String, nullable=True)  # Comma-separated ledger entry IDs
+    
+    # Approval workflow
+    status = Column(String, default="PENDING")  # PENDING, APPROVED, REJECTED, POSTED
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(String, nullable=True)
+    
+    remarks = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
