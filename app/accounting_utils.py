@@ -224,3 +224,59 @@ def create_default_coa(db: Session, company_id: int) -> bool:
         db.rollback()
         print(f"❌ Error creating default COA: {str(e)}")
         return False
+
+
+def generate_account_code(db: Session, company_id: int, account_type: str) -> str:
+    """
+    Generate unique account code based on account type.
+    
+    Account code format:
+    - Assets: 1XXX (1000-1999)
+    - Liabilities: 2XXX (2000-2999)
+    - Equity: 3XXX (3000-3999)
+    - Income: 4XXX (4000-4999)
+    - Expenses: 5XXX (5000-5999)
+    """
+    # Define prefix ranges
+    prefix_map = {
+        "Assets": "1",
+        "Liabilities": "2",
+        "Equity": "3",
+        "Income": "4",
+        "Expenses": "5"
+    }
+    
+    prefix = prefix_map.get(account_type)
+    if not prefix:
+        raise ValueError(f"Invalid account type: {account_type}")
+    
+    # Get the highest account code for this type and company
+    highest = db.query(ChartOfAccountsModel).filter(
+        ChartOfAccountsModel.company_id == company_id,
+        ChartOfAccountsModel.account_code.like(f"{prefix}%")
+    ).order_by(ChartOfAccountsModel.account_code.desc()).first()
+    
+    if highest:
+        try:
+            last_code = int(highest.account_code)
+            next_code = last_code + 1
+        except ValueError:
+            # If code is not numeric, start from base
+            next_code = int(f"{prefix}000")
+    else:
+        # No existing codes, start from base
+        next_code = int(f"{prefix}000")
+    
+    return str(next_code)
+
+
+def get_default_category(account_type: str) -> str:
+    """Get default category based on account type."""
+    category_map = {
+        "Assets": "Current Assets",
+        "Liabilities": "Current Liabilities",
+        "Equity": "Capital",
+        "Income": "Operating Income",
+        "Expenses": "Operating Expenses"
+    }
+    return category_map.get(account_type, "General")

@@ -14,12 +14,21 @@ from app.routes.jewel_rates import jewel_rates_router
 from app.routes.bank_details import bank_details_router
 from app.routes.schemes import schemes_router
 from app.routes.customers import customer_details_router
-from app.routes.chart_of_accounts import coa_router
+from app.routes.chart_of_accounts import (
+    coa_router,
+    assets_router,
+    liabilities_router,
+    equity_router,
+    income_router,
+    expenses_router as coa_expenses_router
+)
 from app.routes.ledger_entries import ledger_router
 from app.routes.pledges import router as pledges_router
 from app.routes.receipts import router as receipts_router
 from app.routes.bank_pledges import router as bank_pledges_router
 from app.routes.expenses import router as expenses_router
+from app.routes.api_configurations import router as api_config_router
+from app.routes.old_data import old_data_router
 from app.swagger_auth import swagger_auth_router
 
 load_dotenv()
@@ -75,11 +84,18 @@ app.include_router(bank_details_router)
 app.include_router(schemes_router)
 app.include_router(customer_details_router)
 app.include_router(coa_router)
+app.include_router(assets_router)
+app.include_router(liabilities_router)
+app.include_router(equity_router)
+app.include_router(income_router)
+app.include_router(coa_expenses_router)
 app.include_router(ledger_router)
 app.include_router(pledges_router)
 app.include_router(receipts_router)
 app.include_router(bank_pledges_router)
 app.include_router(expenses_router)
+app.include_router(api_config_router)
+app.include_router(old_data_router)
 
 
 # Configure OAuth2 for Swagger UI

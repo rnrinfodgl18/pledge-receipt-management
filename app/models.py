@@ -1,5 +1,6 @@
 """SQLAlchemy ORM models."""
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, func, Float, ForeignKey
+from sqlalchemy.orm import relationship
 from app.database import Base
 
 
@@ -168,6 +169,17 @@ class Pledge(Base):
     pledge_photo = Column(String, nullable=True)  # Photo URL/path
     status = Column(String, default="Active")  # Active, Closed, Redeemed, Forfeited
     old_pledge_no = Column(String, nullable=True)  # Optional - reference to old pledge
+    
+    # Pledge close tracking columns
+    pledge_close_date = Column(DateTime, nullable=True)  # Date when pledge was closed
+    total_principal_received = Column(Float, nullable=True, default=0.0)  # Total principal amount received
+    total_interest_received = Column(Float, nullable=True, default=0.0)  # Total interest amount received
+    
+    # Relationships
+    customer = relationship("CustomerDetails", foreign_keys=[customer_id])
+    scheme = relationship("Scheme", foreign_keys=[scheme_id])
+    pledge_items = relationship("PledgeItems", foreign_keys="PledgeItems.pledge_id")
+    
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -186,6 +198,10 @@ class PledgeItems(Base):
     gross_weight = Column(Float, nullable=False)
     net_weight = Column(Float, nullable=False)
     quantity = Column(Integer, default=1)
+    
+    # Relationships
+    jewel_type = relationship("JewelType", foreign_keys=[jewel_type_id])
+    
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -412,6 +428,36 @@ class ExpenseTransaction(Base):
     
     remarks = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ApiConfiguration(Base):
+    """API Configuration model - stores external API configurations for data fetch."""
+    __tablename__ = "api_configurations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    api_name = Column(String, nullable=False, index=True)  # e.g., "Old Data API", "Secondary API"
+    api_type = Column(String, nullable=False)  # e.g., "DATA_FETCH", "INTEGRATION", "WEBHOOK"
+    base_url = Column(String, nullable=False)  # e.g., "https://api.olddata.com/v1"
+    api_key = Column(String, nullable=True)  # Optional API key for authentication
+    api_secret = Column(String, nullable=True)  # Optional API secret
+    auth_type = Column(String, nullable=True)  # NONE, API_KEY, BEARER_TOKEN, BASIC_AUTH, OAUTH2
+    
+    # Additional headers
+    custom_headers = Column(String, nullable=True)  # JSON string for custom headers
+    
+    # Connection settings
+    timeout_seconds = Column(Integer, default=30)  # Request timeout
+    retry_count = Column(Integer, default=3)  # Number of retries
+    
+    # Status and metadata
+    is_active = Column(Boolean, default=True)
+    last_used_at = Column(DateTime, nullable=True)
+    description = Column(String, nullable=True)
+    
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

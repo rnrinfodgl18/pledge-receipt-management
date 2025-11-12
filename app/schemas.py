@@ -338,6 +338,52 @@ class ChartOfAccounts(ChartOfAccountsBase):
         from_attributes = True
 
 
+# Simplified COA Schemas for Type-Specific Endpoints
+class AssetAccountCreate(BaseModel):
+    """Simplified schema for creating asset accounts."""
+    company_id: int
+    account_name: str
+    sub_account_of: Optional[int] = None
+    opening_balance: float = 0.0
+    description: Optional[str] = None
+
+
+class LiabilityAccountCreate(BaseModel):
+    """Simplified schema for creating liability accounts."""
+    company_id: int
+    account_name: str
+    sub_account_of: Optional[int] = None
+    opening_balance: float = 0.0
+    description: Optional[str] = None
+
+
+class EquityAccountCreate(BaseModel):
+    """Simplified schema for creating equity/capital accounts."""
+    company_id: int
+    account_name: str
+    sub_account_of: Optional[int] = None
+    opening_balance: float = 0.0
+    description: Optional[str] = None
+
+
+class IncomeAccountCreate(BaseModel):
+    """Simplified schema for creating income accounts."""
+    company_id: int
+    account_name: str
+    sub_account_of: Optional[int] = None
+    opening_balance: float = 0.0
+    description: Optional[str] = None
+
+
+class ExpenseAccountCreate(BaseModel):
+    """Simplified schema for creating expense accounts."""
+    company_id: int
+    account_name: str
+    sub_account_of: Optional[int] = None
+    opening_balance: float = 0.0
+    description: Optional[str] = None
+
+
 # Ledger Entries Schemas
 class LedgerEntriesBase(BaseModel):
     """Base ledger entries schema."""
@@ -425,6 +471,7 @@ class PledgeItems(PledgeItemsBase):
     created_by: int
     created_at: datetime
     updated_at: datetime
+    jewel_type: Optional["JewelType"] = None  # Jewel type object
 
     class Config:
         from_attributes = True
@@ -481,6 +528,11 @@ class PledgeUpdate(BaseModel):
     pledge_photo: Optional[str] = None
     status: Optional[str] = None
     old_pledge_no: Optional[str] = None
+    
+    # Pledge close tracking fields
+    pledge_close_date: Optional[datetime] = None
+    total_principal_received: Optional[float] = None
+    total_interest_received: Optional[float] = None
     pledge_items: Optional[List[PledgeItemsCreate]] = None  # New items to replace existing
 
 
@@ -488,10 +540,15 @@ class Pledge(PledgeBase):
     """Pledge schema with database fields."""
     id: int
     pledge_no: str
+    pledge_close_date: Optional[datetime] = None
+    total_principal_received: Optional[float] = None
+    total_interest_received: Optional[float] = None
     created_by: int
     created_at: datetime
     updated_at: datetime
     pledge_items: List[PledgeItems] = []
+    customer: Optional["CustomerDetails"] = None  # Customer object
+    scheme: Optional["Scheme"] = None  # Scheme object
 
     class Config:
         from_attributes = True
@@ -897,6 +954,76 @@ class ExpenseTransactionWithDetails(ExpenseTransaction):
     credit_account_name: Optional[str] = None
     created_by_username: Optional[str] = None
     approved_by_username: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# API Configuration Schemas
+class ApiConfigurationBase(BaseModel):
+    """Base API configuration schema."""
+    company_id: int
+    api_name: str
+    api_type: str  # DATA_FETCH, INTEGRATION, WEBHOOK
+    base_url: str
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
+    auth_type: Optional[str] = None  # NONE, API_KEY, BEARER_TOKEN, BASIC_AUTH, OAUTH2
+    custom_headers: Optional[str] = None
+    timeout_seconds: int = 30
+    retry_count: int = 3
+    description: Optional[str] = None
+
+
+class ApiConfigurationCreate(ApiConfigurationBase):
+    """Schema for creating API configuration."""
+    pass
+
+
+class ApiConfigurationUpdate(BaseModel):
+    """Schema for updating API configuration."""
+    api_name: Optional[str] = None
+    api_type: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
+    auth_type: Optional[str] = None
+    custom_headers: Optional[str] = None
+    timeout_seconds: Optional[int] = None
+    retry_count: Optional[int] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class ApiConfiguration(ApiConfigurationBase):
+    """API configuration schema with database fields."""
+    id: int
+    is_active: bool
+    last_used_at: Optional[datetime]
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ApiConfigurationResponse(BaseModel):
+    """API configuration response with masked sensitive data."""
+    id: int
+    company_id: int
+    api_name: str
+    api_type: str
+    base_url: str
+    auth_type: Optional[str]
+    timeout_seconds: int
+    retry_count: int
+    is_active: bool
+    last_used_at: Optional[datetime]
+    description: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    # Sensitive fields excluded (api_key, api_secret)
 
     class Config:
         from_attributes = True

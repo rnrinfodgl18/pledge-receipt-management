@@ -1,13 +1,14 @@
 """Receipt management routes for pledge payments."""
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
-from typing import List, Optional
+from sqlalchemy.orm import Session, joinedload
+from datetime import datetime, timedelta, date
+from typing import List, Optional, Dict, Any
+from calendar import monthrange
 
 from app.database import get_db
 from app.auth import get_current_user
 from app.models import (
-    PledgeReceipt, ReceiptItem, Pledge, User, Company
+    PledgeReceipt, ReceiptItem, Pledge, User, Company, Scheme
 )
 from app.schemas import (
     PledgeReceipt as PledgeReceiptSchema,
@@ -118,8 +119,40 @@ def create_receipt(
                 created_by=current_user.id
             )
             db.add(receipt_item)
+            
+            # Update pledge close tracking for each item
+            pledge = db.query(Pledge).filter(Pledge.id == item_data.pledge_id).first()
+            if pledge:
+                # Initialize tracking fields if null
+                if pledge.total_principal_received is None:
+                    pledge.total_principal_received = 0.0
+                if pledge.total_interest_received is None:
+                    pledge.total_interest_received = 0.0
+                
+                # Calculate actual received interest (after discount)
+                # Received interest = paid_interest - discount given
+                actual_interest_received = item_data.paid_interest - (item_data.paid_discount or 0.0)
+                
+                # Add current payment to totals
+                pledge.total_principal_received += item_data.paid_principal
+                pledge.total_interest_received += actual_interest_received
+                
+                # Normalize payment type for comparison (case-insensitive, trimmed)
+                payment_type_normalized = item_data.payment_type.strip().lower() if item_data.payment_type else ""
+                
+                # Handle pledge closure based on payment type
+                if payment_type_normalized in ["full payment", "redeemed", "full", "fullpayment"]:
+                    # Full payment - close the pledge (customer redeemed items)
+                    pledge.status = "Redeemed"
+                    pledge.pledge_close_date = receipt_data.receipt_date
+                elif payment_type_normalized in ["closed", "closure", "close"]:
+                    # Manual closure (administrative/auction/loss)
+                    pledge.status = "Closed"
+                    pledge.pledge_close_date = receipt_data.receipt_date
+                # For "Partial Payment", "Extension", or any other type, status remains "Active"
         
         db.commit()
+        db.refresh(receipt)
         
         return receipt
         
@@ -189,6 +222,124 @@ def get_receipts(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving receipts: {str(e)}")
+
+
+@router.get("/customer-outstanding")
+def get_customer_outstanding_pledges(
+    company_id: int = Query(..., description="Company ID"),
+    customer_id: int = Query(..., description="Customer ID"),
+    calculation_date: Optional[date] = Query(None, description="Date for interest calculation (default: today)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Get customer's active pledges with outstanding principal and interest calculations.
+    
+    Calculates interest from pledge date to calculation date with the following rules:
+    - First month interest is mandatory (already received at pledge creation)
+    - Monthly interest calculation after first month
+    - For partial months: 1-15 days = half month, 16+ days = full month
+    
+    Args:
+        company_id: Company ID
+        customer_id: Customer ID
+        calculation_date: Date for interest calculation (defaults to today)
+        db: Database session
+        current_user: Current authenticated user
+    
+    Returns:
+        Dictionary with:
+        - pledges: List of pledge details with outstanding amounts
+        - summary: Total counts and amounts
+    
+    Example:
+        GET /api/receipts/customer-outstanding?company_id=1&customer_id=5
+        GET /api/receipts/customer-outstanding?company_id=1&customer_id=5&calculation_date=2025-12-01
+    """
+    try:
+        # Default to today if no calculation date provided
+        if calculation_date is None:
+            calculation_date = date.today()
+        
+        # Get all active pledges for customer
+        pledges = (
+            db.query(Pledge)
+            .options(joinedload(Pledge.scheme))
+            .filter(
+                Pledge.company_id == company_id,
+                Pledge.customer_id == customer_id,
+                Pledge.status == "Active"
+            )
+            .all()
+        )
+        
+        if not pledges:
+            return {
+                "pledges": [],
+                "summary": {
+                    "total_pledge_count": 0,
+                    "total_principal_outstanding": 0.0,
+                    "total_interest_outstanding": 0.0,
+                    "final_payable_amount": 0.0
+                }
+            }
+        
+        pledge_details = []
+        total_principal_outstanding = 0.0
+        total_interest_outstanding = 0.0
+        
+        for pledge in pledges:
+            # Calculate total days from pledge date to calculation date
+            pledge_date = pledge.pledge_date.date() if isinstance(pledge.pledge_date, datetime) else pledge.pledge_date
+            total_days = (calculation_date - pledge_date).days
+            
+            # Calculate principal outstanding
+            principal_received = pledge.total_principal_received or 0.0
+            principal_outstanding = pledge.loan_amount - principal_received
+            
+            # Calculate interest outstanding
+            interest_outstanding = calculate_interest_outstanding(
+                pledge_date=pledge_date,
+                calculation_date=calculation_date,
+                loan_amount=pledge.loan_amount,
+                interest_rate=pledge.interest_rate,
+                first_month_interest=pledge.first_month_interest,
+                total_interest_received=pledge.total_interest_received or 0.0
+            )
+            
+            # Add to totals
+            total_principal_outstanding += principal_outstanding
+            total_interest_outstanding += interest_outstanding
+            
+            # Build pledge detail
+            pledge_details.append({
+                "pledge_id": pledge.id,
+                "pledge_no": pledge.pledge_no,
+                "pledge_date": pledge_date.isoformat(),
+                "scheme_name": pledge.scheme.scheme_name if pledge.scheme else "N/A",
+                "pledge_amount": pledge.loan_amount,
+                "due_date": pledge.due_date.isoformat() if pledge.due_date else None,
+                "total_days": total_days,
+                "principal_outstanding": round(principal_outstanding, 2),
+                "interest_outstanding": round(interest_outstanding, 2),
+                "total_outstanding": round(principal_outstanding + interest_outstanding, 2)
+            })
+        
+        # Calculate final payable amount
+        final_payable_amount = total_principal_outstanding + total_interest_outstanding
+        
+        return {
+            "pledges": pledge_details,
+            "summary": {
+                "total_pledge_count": len(pledges),
+                "total_principal_outstanding": round(total_principal_outstanding, 2),
+                "total_interest_outstanding": round(total_interest_outstanding, 2),
+                "final_payable_amount": round(final_payable_amount, 2)
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating outstanding: {str(e)}")
 
 
 @router.get("/{receipt_id}", response_model=PledgeReceiptSchema)
@@ -490,3 +641,76 @@ def delete_receipt(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting receipt: {str(e)}")
+
+
+def calculate_interest_outstanding(
+    pledge_date: date,
+    calculation_date: date,
+    loan_amount: float,
+    interest_rate: float,
+    first_month_interest: float,
+    total_interest_received: float
+) -> float:
+    """
+    Calculate interest outstanding from pledge date to calculation date.
+    
+    Rules:
+    - First month interest is mandatory and already collected
+    - After first month, calculate monthly interest
+    - For partial months: 1-15 days = half month interest, 16+ days = full month interest
+    
+    Args:
+        pledge_date: Date when pledge was created
+        calculation_date: Date to calculate interest up to
+        loan_amount: Principal loan amount
+        interest_rate: Monthly interest rate (%)
+        first_month_interest: First month interest amount (already collected)
+        total_interest_received: Total interest already received
+    
+    Returns:
+        Interest outstanding amount
+    """
+    # Calculate total interest due
+    total_interest_due = first_month_interest  # First month is mandatory
+    
+    # Calculate months and days between pledge date and calculation date
+    current_date = date(pledge_date.year, pledge_date.month, pledge_date.day)
+    
+    # Move to start of next month after pledge date
+    if current_date.month == 12:
+        current_month_start = date(current_date.year + 1, 1, current_date.day)
+    else:
+        current_month_start = date(current_date.year, current_date.month + 1, current_date.day)
+    
+    # Calculate interest for each subsequent month
+    while current_month_start <= calculation_date:
+        # Calculate next month start
+        if current_month_start.month == 12:
+            next_month_start = date(current_month_start.year + 1, 1, current_month_start.day)
+        else:
+            next_month_start = date(current_month_start.year, current_month_start.month + 1, current_month_start.day)
+        
+        if next_month_start > calculation_date:
+            # Partial month - calculate days
+            days_in_period = (calculation_date - current_month_start).days + 1
+            
+            if days_in_period <= 15:
+                # 1-15 days: half month interest
+                month_interest = (loan_amount * interest_rate / 100) * 0.5
+            else:
+                # 16+ days: full month interest
+                month_interest = loan_amount * interest_rate / 100
+            
+            total_interest_due += month_interest
+            break
+        else:
+            # Full month
+            month_interest = loan_amount * interest_rate / 100
+            total_interest_due += month_interest
+            current_month_start = next_month_start
+    
+    # Calculate outstanding interest
+    interest_outstanding = total_interest_due - total_interest_received
+    
+    # Ensure non-negative
+    return max(0.0, interest_outstanding)

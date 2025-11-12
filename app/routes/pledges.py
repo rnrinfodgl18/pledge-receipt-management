@@ -1,6 +1,6 @@
 """API routes for pledge management with automatic ledger integration."""
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import datetime, date
 from typing import List, Optional
 
@@ -94,6 +94,17 @@ def create_pledge(
             monthly_rate = (pledge_data.interest_rate or scheme.interest_rate_per_month) / 100
             pledge_data.first_month_interest = pledge_data.loan_amount * monthly_rate
         
+        # Calculate due_date if not provided (pledge_date + scheme duration)
+        if not pledge_data.due_date and scheme.duration_in_months:
+            pledge_date_obj = pledge_data.pledge_date if isinstance(pledge_data.pledge_date, datetime) else datetime.combine(pledge_data.pledge_date, datetime.min.time())
+            # Add months to pledge date
+            month = pledge_date_obj.month + scheme.duration_in_months
+            year = pledge_date_obj.year + (month - 1) // 12
+            month = ((month - 1) % 12) + 1
+            due_date = pledge_date_obj.replace(year=year, month=month)
+        else:
+            due_date = pledge_data.due_date
+        
         # Create pledge
         new_pledge = PledgeModel(
             company_id=pledge_data.company_id,
@@ -101,6 +112,7 @@ def create_pledge(
             customer_id=pledge_data.customer_id,
             scheme_id=pledge_data.scheme_id,
             pledge_date=pledge_data.pledge_date or datetime.now().date(),
+            due_date=due_date,
             gross_weight=pledge_data.gross_weight,
             net_weight=pledge_data.net_weight,
             maximum_value=pledge_data.maximum_value,
@@ -111,6 +123,9 @@ def create_pledge(
             pledge_photo=pledge_data.pledge_photo,
             status="Active",
             old_pledge_no=pledge_data.old_pledge_no,
+            # Initialize tracking fields - add first month interest as received by default
+            total_principal_received=0.0,
+            total_interest_received=pledge_data.first_month_interest,
             created_by=current_user.id,
         )
         
@@ -153,38 +168,6 @@ def create_pledge(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error creating pledge: {str(e)}",
         )
-
-
-@router.get("/{company_id}", response_model=List[PledgeSchema])
-def get_pledges(
-    company_id: int,
-    status_filter: str = None,
-    customer_id: int = None,
-    scheme_id: int = None,
-    db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_user),
-):
-    """
-    Get all pledges for a company with optional filters.
-    
-    Query parameters:
-    - status_filter: Filter by status (Active, Closed, Redeemed, Forfeited)
-    - customer_id: Filter by customer
-    - scheme_id: Filter by scheme
-    """
-    # Authorization: allow all authenticated users (removed company_id check as User model doesn't have it)
-    
-    query = db.query(PledgeModel).filter(PledgeModel.company_id == company_id)
-    
-    if status_filter:
-        query = query.filter(PledgeModel.status == status_filter)
-    if customer_id:
-        query = query.filter(PledgeModel.customer_id == customer_id)
-    if scheme_id:
-        query = query.filter(PledgeModel.scheme_id == scheme_id)
-    
-    pledges = query.order_by(PledgeModel.created_at.desc()).all()
-    return pledges
 
 
 @router.get("/list")
@@ -230,7 +213,15 @@ def get_pledges_list(
     if offset and offset < 0:
         offset = 0
 
-    query = db.query(PledgeModel).filter(PledgeModel.company_id == company_id)
+    query = (
+        db.query(PledgeModel)
+        .options(
+            joinedload(PledgeModel.customer),
+            joinedload(PledgeModel.scheme),
+            joinedload(PledgeModel.pledge_items).joinedload(PledgeItemsModel.jewel_type)
+        )
+        .filter(PledgeModel.company_id == company_id)
+    )
 
     if status:
         query = query.filter(PledgeModel.status == status)
@@ -251,6 +242,140 @@ def get_pledges_list(
         "offset": offset,
         "data": pledges
     }
+
+
+@router.get("/company/{company_id}/pledges")
+def get_company_pledges(
+    company_id: int,
+    customer_id: Optional[int] = Query(None, description="Filter by customer ID"),
+    scheme_id: Optional[int] = Query(None, description="Filter by scheme ID"),
+    status: Optional[str] = Query(None, description="Filter by status (Active, Closed, Redeemed, Forfeited)"),
+    limit: Optional[int] = Query(100, description="Max records (default: 100, max: 1000)"),
+    offset: Optional[int] = Query(0, description="Records to skip (default: 0)"),
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """
+    Get all pledges for a specific company with optional filters and pagination.
+    
+    Path parameters:
+    - company_id: Required company ID
+    
+    Query parameters:
+    - customer_id: Optional - filter by customer
+    - scheme_id: Optional - filter by scheme
+    - status: Optional - filter by status (Active, Closed, Redeemed, Forfeited)
+    - limit: max number of records to return (default: 100, max: 1000)
+    - offset: number of records to skip (default: 0)
+    
+    Returns:
+    {
+        "total": total count of matching pledges,
+        "limit": limit used,
+        "offset": offset used,
+        "data": [...pledges with customer, scheme, and items...]
+    }
+    
+    Example:
+        GET /pledges/company/1/pledges?status=Active&limit=50
+        GET /pledges/company/1/pledges?customer_id=5&offset=100
+    """
+    # Validate limit (max 1000)
+    if limit and limit > 1000:
+        limit = 1000
+    if limit and limit < 1:
+        limit = 1
+    
+    # Validate offset
+    if offset and offset < 0:
+        offset = 0
+    
+    query = (
+        db.query(PledgeModel)
+        .options(
+            joinedload(PledgeModel.customer),
+            joinedload(PledgeModel.scheme),
+            joinedload(PledgeModel.pledge_items).joinedload(PledgeItemsModel.jewel_type)
+        )
+        .filter(PledgeModel.company_id == company_id)
+    )
+    
+    if status:
+        query = query.filter(PledgeModel.status == status)
+    if customer_id:
+        query = query.filter(PledgeModel.customer_id == customer_id)
+    if scheme_id:
+        query = query.filter(PledgeModel.scheme_id == scheme_id)
+    
+    # Get total count before pagination
+    total = query.count()
+    
+    # Apply pagination and get results
+    pledges = query.order_by(PledgeModel.created_at.desc()).limit(limit).offset(offset).all()
+    
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "data": pledges
+    }
+
+
+@router.get("/pledge/{pledge_id}")
+def get_single_pledge(
+    pledge_id: int,
+    company_id: Optional[int] = Query(None, description="Optional company ID for validation"),
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """
+    Get a single specific pledge by ID with all related data.
+    
+    Path parameters:
+    - pledge_id: Required pledge ID
+    
+    Query parameters:
+    - company_id: Optional - if provided, validates pledge belongs to this company
+    
+    Returns:
+    - Complete pledge object with:
+      * Customer details
+      * Scheme details
+      * Pledge items with jewel type details
+    
+    Example:
+        GET /pledges/pledge/123
+        GET /pledges/pledge/123?company_id=1
+    """
+    query = (
+        db.query(PledgeModel)
+        .options(
+            joinedload(PledgeModel.customer),
+            joinedload(PledgeModel.scheme),
+            joinedload(PledgeModel.pledge_items).joinedload(PledgeItemsModel.jewel_type)
+        )
+        .filter(PledgeModel.id == pledge_id)
+    )
+    
+    # If company_id is provided, add it as a filter
+    if company_id:
+        query = query.filter(PledgeModel.company_id == company_id)
+    
+    pledge = query.first()
+    
+    if not pledge:
+        if company_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Pledge {pledge_id} not found for company {company_id}",
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Pledge {pledge_id} not found",
+            )
+    
+    return pledge
 
 
 @router.get("/report/due-date")
@@ -311,11 +436,19 @@ def get_pledge_due_date_report(
     if offset and offset < 0:
         offset = 0
     
-    # Build query
-    query = db.query(PledgeModel).filter(
-        PledgeModel.company_id == company_id,
-        PledgeModel.due_date >= from_date,
-        PledgeModel.due_date <= to_date
+    # Build query with eager loading
+    query = (
+        db.query(PledgeModel)
+        .options(
+            joinedload(PledgeModel.customer),
+            joinedload(PledgeModel.scheme),
+            joinedload(PledgeModel.pledge_items).joinedload(PledgeItemsModel.jewel_type)
+        )
+        .filter(
+            PledgeModel.company_id == company_id,
+            PledgeModel.due_date >= from_date,
+            PledgeModel.due_date <= to_date
+        )
     )
     
     # Apply optional status filter
@@ -337,26 +470,6 @@ def get_pledge_due_date_report(
         "status": status,
         "data": pledges
     }
-
-
-@router.get("/{pledge_id}", response_model=PledgeSchema)
-def get_pledge(
-    pledge_id: int,
-    db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_user),
-):
-    """Get specific pledge with all items."""
-    pledge = db.query(PledgeModel).filter(PledgeModel.id == pledge_id).first()
-    
-    if not pledge:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Pledge not found",
-        )
-    
-    # Authorization: allow all authenticated users
-    
-    return pledge
 
 
 @router.put("/{pledge_id}", response_model=PledgeSchema)
@@ -954,4 +1067,68 @@ def get_stone_types(
     stone_type_list = [stone[0] for stone in stone_types if stone[0]]
     
     return stone_type_list
+
+
+@router.post("/{pledge_id}/close")
+def close_pledge(
+    pledge_id: int,
+    close_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user)
+):
+    """
+    Manually close a pledge.
+    
+    This endpoint allows closing a pledge and updating the close tracking fields.
+    
+    Args:
+        pledge_id: ID of pledge to close
+        close_date: Optional close date (defaults to current datetime)
+        db: Database session
+        current_user: Authenticated user
+    
+    Returns:
+        Updated pledge with close details
+    
+    Note:
+        - Sets pledge status to "Closed"
+        - Records pledge_close_date
+        - Maintains existing total_principal_received and total_interest_received
+    """
+    pledge = db.query(PledgeModel).filter(PledgeModel.id == pledge_id).first()
+    
+    if not pledge:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pledge not found"
+        )
+    
+    if pledge.status == "Closed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pledge is already closed"
+        )
+    
+    # Set close date (use provided date or current datetime)
+    pledge.pledge_close_date = close_date or datetime.now()
+    pledge.status = "Closed"
+    
+    # Initialize totals if null
+    if pledge.total_principal_received is None:
+        pledge.total_principal_received = 0.0
+    if pledge.total_interest_received is None:
+        pledge.total_interest_received = 0.0
+    
+    db.commit()
+    db.refresh(pledge)
+    
+    return {
+        "message": "Pledge closed successfully",
+        "pledge_id": pledge.id,
+        "pledge_no": pledge.pledge_no,
+        "status": pledge.status,
+        "pledge_close_date": pledge.pledge_close_date,
+        "total_principal_received": pledge.total_principal_received,
+        "total_interest_received": pledge.total_interest_received
+    }
 
